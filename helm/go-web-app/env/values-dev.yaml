@@ -1,5 +1,5 @@
 image:
-  tag: "72d4185"
+  tag: "ea51691"
 
 ingress:
   enabled: true
