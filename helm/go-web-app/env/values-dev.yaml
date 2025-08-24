@@ -1,0 +1,9 @@
+image:
+  tag: "dev"
+
+ingress:
+  enabled: true
+  className: "nginx"
+  hosts:
+    - host: dev.example.com
+      paths: ["/"]
