@@ -20,30 +20,38 @@ jobs:
         with:
           go-version: "1.22"
 
-      - name: Tests
+      - name: Unit tests
         run: |
           cd app
           go test ./...
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Compute image vars (lowercase owner + short sha)
+        id: vars
+        run: |
+          echo "IMAGE_OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
 
-      - name: Login to GHCR (via GITHUB_TOKEN)
+      - name: Log in to GHCR (via GITHUB_TOKEN)
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-      - name: Build image
-        run: |
-          docker build -f docker/Dockerfile -t ghcr.io/${{ github.repository_owner }}/go-web-app:${{ github.sha }} .
-          docker tag ghcr.io/${{ github.repository_owner }}/go-web-app:${{ github.sha }} ghcr.io/${{ github.repository_owner }}/go-web-app:dev
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Push image
-        run: |
-          docker push ghcr.io/${{ github.repository_owner }}/go-web-app:${{ github.sha }}
-          docker push ghcr.io/${{ github.repository_owner }}/go-web-app:dev
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ env.IMAGE_OWNER }}/go-web-app:${{ github.sha }}
+            ghcr.io/${{ env.IMAGE_OWNER }}/go-web-app:dev
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Bump Helm dev tag to current SHA
+        if: github.ref == 'refs/heads/main'
         run: |
-          SHORT_SHA=${GITHUB_SHA::7}
           sed -i "s/^  tag: \".*\"/  tag: \"${SHORT_SHA}\"/" helm/go-web-app/env/values-dev.yaml
           git config user.name "${{ github.actor }}"
           git config user.email "${{ github.actor }}@users.noreply.github.com"
