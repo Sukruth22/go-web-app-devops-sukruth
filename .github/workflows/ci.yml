@@ -1,0 +1,49 @@
+name: CI - Build, Push, Bump Tag
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Tests
+        run: |
+          cd app
+          go test ./...
+
+      - name: Login to GHCR
+        run: echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
+
+      - name: Build image
+        run: |
+          docker build -f docker/Dockerfile -t ghcr.io/${{ secrets.GHCR_USERNAME }}/go-web-app:${{ github.sha }} .
+          docker tag ghcr.io/${{ secrets.GHCR_USERNAME }}/go-web-app:${{ github.sha }} ghcr.io/${{ secrets.GHCR_USERNAME }}/go-web-app:dev
+
+      - name: Push image
+        run: |
+          docker push ghcr.io/${{ secrets.GHCR_USERNAME }}/go-web-app:${{ github.sha }}
+          docker push ghcr.io/${{ secrets.GHCR_USERNAME }}/go-web-app:dev
+
+      - name: Bump Helm dev tag to current SHA
+        run: |
+          SHORT_SHA=${GITHUB_SHA::7}
+          sed -i "s/^  tag: \".*\"/  tag: \"${SHORT_SHA}\"/" helm/go-web-app/env/values-dev.yaml
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add helm/go-web-app/env/values-dev.yaml
+          git commit -m "ci: bump dev image tag to ${SHORT_SHA}" || echo "No changes"
+          git push
